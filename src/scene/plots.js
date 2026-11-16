@@ -25,15 +25,39 @@ const GAP = 10; // ft between amenities in a row
 
 /* ---------- layout engine ---------- */
 
+export const isRoad = (p) => p && p.type === 'road';
+
 /**
- * Rows of plots are filled left→right in the order given, then paired back-to-back into blocks.
- * Each block has a road above and below; a vertical spine road on the west joins them and a
- * wider main road runs along the south edge (the entrance).
+ * Plots are grouped by the road markers in the list ({ type: 'road', width }).
+ * Inside a group, rows are filled left→right in the order given and paired back-to-back into
+ * blocks with an internal road between blocks. A road marker ends the current row/block and
+ * draws a road of its own width before the next plots. A vertical spine road on the west joins
+ * every road, and a wider main road runs along the south edge (the entrance).
  */
 export function layoutPlots(data) {
   const R = clamp(num(data.internalRoad) || 30, 10, 150);
   const M = clamp(num(data.mainRoad) || 40, 10, 150);
-  const plots = data.plots.map((p, idx) => ({ ...p, idx, w: num(p.width), d: num(p.depth) }));
+
+  // split the list into groups of plots separated by road markers
+  const groups = [{ plots: [], roadAfter: null }];
+  data.plots.forEach((p, idx) => {
+    if (isRoad(p)) {
+      const g = groups[groups.length - 1];
+      if (g.plots.length) {
+        g.roadAfter = clamp(num(p.width) || R, 10, 150);
+        groups.push({ plots: [], roadAfter: null });
+      } else if (groups.length > 1) {
+        // two markers in a row: keep the wider one
+        const prev = groups[groups.length - 2];
+        prev.roadAfter = Math.max(prev.roadAfter, clamp(num(p.width) || R, 10, 150));
+      }
+      return;
+    }
+    groups[groups.length - 1].plots.push({ ...p, idx, w: num(p.width), d: num(p.depth) });
+  });
+  if (!groups[groups.length - 1].plots.length) groups.pop();
+  const plots = groups.flatMap((g) => g.plots);
+
   const area = plots.reduce((s, p) => s + p.w * p.d, 0);
   const target = Math.max(Math.sqrt(area * 1.3), 120, ...plots.map((p) => p.w));
 
@@ -55,11 +79,11 @@ export function layoutPlots(data) {
     return rows;
   };
 
-  const rows = fill(plots);
+  const groupRows = groups.map((g) => fill(g.plots));
   const amen = (data.amenities || []).map((a, idx) => ({ ...a, idx, w: num(a.width), d: num(a.depth) })).filter((a) => a.w > 0 && a.d > 0);
   const amenRows = fill(amen, GAP);
   const rowLen = (row, gap = 0) => row.reduce((s, it) => s + it.w, 0) + gap * (row.length - 1);
-  const innerW = Math.max(...rows.map((r) => rowLen(r)), ...amenRows.map((r) => rowLen(r, GAP)), 0);
+  const innerW = Math.max(...groupRows.flat().map((r) => rowLen(r)), ...amenRows.map((r) => rowLen(r, GAP)), 0);
   const X0 = R; // spine road width
   const W = X0 + innerW;
 
@@ -67,17 +91,29 @@ export function layoutPlots(data) {
   let z = 0;
   roads.push({ x: 0, z, w: W, l: R, kind: 'internal' });
   z += R;
-  const blocks = [];
-  for (let i = 0; i < rows.length; i += 2) blocks.push([rows[i], rows[i + 1]]);
-  blocks.forEach(([A, B], bi) => {
-    const dA = Math.max(...A.map((p) => p.d));
-    const dB = B ? Math.max(...B.map((p) => p.d)) : 0;
-    A.forEach((p) => Object.assign(p, { z, front: 'north', x: p.x + X0 }));
-    if (B) B.forEach((p) => Object.assign(p, { z: z + dA + dB - p.d, front: 'south', x: p.x + X0 }));
-    z += dA + dB;
-    const last = bi === blocks.length - 1 && !amenRows.length;
-    roads.push({ x: 0, z, w: W, l: last ? M : R, kind: last ? 'main' : 'internal' });
-    z += last ? M : R;
+  groupRows.forEach((rows, gi) => {
+    const blocks = [];
+    for (let i = 0; i < rows.length; i += 2) blocks.push([rows[i], rows[i + 1]]);
+    blocks.forEach(([A, B], bi) => {
+      const dA = Math.max(...A.map((p) => p.d));
+      const dB = B ? Math.max(...B.map((p) => p.d)) : 0;
+      A.forEach((p) => Object.assign(p, { z, front: 'north', x: p.x + X0 }));
+      if (B) B.forEach((p) => Object.assign(p, { z: z + dA + dB - p.d, front: 'south', x: p.x + X0 }));
+      z += dA + dB;
+      const lastBlock = bi === blocks.length - 1;
+      const lastGroup = gi === groupRows.length - 1;
+      let width = R;
+      let kind = 'internal';
+      if (lastBlock && lastGroup && !amenRows.length) {
+        width = M;
+        kind = 'main';
+      } else if (lastBlock && groups[gi].roadAfter) {
+        width = groups[gi].roadAfter;
+        kind = 'custom';
+      }
+      roads.push({ x: 0, z, w: W, l: width, kind });
+      z += width;
+    });
   });
   amenRows.forEach((row, i) => {
     const dd = Math.max(...row.map((a) => a.d));
@@ -127,6 +163,11 @@ function buildRoads(g, L) {
   const lm = makeLabel(`${L.M} ft main road`, 'road-tag');
   lm.position.set(main.x + main.w * 0.6, 1, main.z + main.l / 2);
   g.add(lm);
+  for (const r of L.roads.filter((x) => x.kind === 'custom')) {
+    const lc = makeLabel(`${r.l} ft road`, 'road-tag custom');
+    lc.position.set(r.x + r.w * 0.35, 1, r.z + r.l / 2);
+    g.add(lc);
+  }
   const inner = L.roads.find((r) => r.kind === 'internal');
   if (inner) {
     const li = makeLabel(`${L.R} ft road`, 'road-tag');

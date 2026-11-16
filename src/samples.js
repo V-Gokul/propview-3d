@@ -47,7 +47,7 @@ export const samplePlots = {
       price: Math.round((w * d * rate) / 10000) * 10000,
       status: statuses[i % statuses.length],
     };
-  }),
+  }).flatMap((p) => (p.id === '12' ? [p, { type: 'road', width: 30 }] : [p])), // a road cut through the middle
   amenities: [
     { name: 'Park', type: 'park', width: 80, depth: 60 },
     { name: 'Clubhouse', type: 'clubhouse', width: 50, depth: 40 },

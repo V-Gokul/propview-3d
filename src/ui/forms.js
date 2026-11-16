@@ -1,7 +1,7 @@
 // Input forms for both modes. Values are written straight into the passed data object.
 import { ROOM_TYPES } from '../scene/apartment.js';
 import { STATUS, AMENITY_TYPES } from '../scene/plots.js';
-import { esc, num, roomArea, bhkLabel } from '../util.js';
+import { esc, num, roomArea, bhkLabel, plotEntries } from '../util.js';
 
 const FACINGS = ['North', 'East', 'South', 'West', 'North-East', 'North-West', 'South-East', 'South-West'];
 const FACING_SHORT = FACINGS.map((f) => [f, f.split('-').map((w) => w[0]).join('')]);
@@ -115,7 +115,9 @@ export function renderApartmentForm(root, a, h) {
 
 export function renderPlotsForm(root, d, h) {
   d.amenities = d.amenities || [];
-  const counts = Object.fromEntries(Object.keys(STATUS).map((k) => [k, d.plots.filter((p) => (p.status || 'available') === k).length]));
+  const onlyPlots = plotEntries(d.plots).map(([p]) => p);
+  const roadCount = d.plots.length - onlyPlots.length;
+  const counts = Object.fromEntries(Object.keys(STATUS).map((k) => [k, onlyPlots.filter((p) => (p.status || 'available') === k).length]));
   root.innerHTML = `
     <div class="form-head">
       <h2>Plot layout details</h2>
@@ -133,12 +135,20 @@ export function renderPlotsForm(root, d, h) {
       </div>
     </fieldset>
     <fieldset>
-      <legend>Plots <small>${d.plots.length} plots · ${counts.available} available</small></legend>
+      <legend>Plots &amp; roads <small>${onlyPlots.length} plots · ${counts.available} available${roadCount ? ` · ${roadCount} road${roadCount > 1 ? 's' : ''}` : ''}</small></legend>
       <div class="rows-head plots"><span>No.</span><span>W</span><span>D</span><span>Facing</span><span>Price ₹</span><span>Status</span><span></span></div>
       <div class="plot-rows">
       ${d.plots
-        .map(
-          (p, i) => `
+        .map((p, i) =>
+          p.type === 'road'
+            ? `
+        <div class="row road-row">
+          <span class="road-chip">🛣 Road</span>
+          <label class="road-w"><input data-list="p" data-row="${i}" data-key="width" type="number" min="10" max="150" value="${esc(p.width)}" /> ft wide</label>
+          <span class="moves"><button class="icon mv" data-act="up" data-i="${i}" title="Move road up" aria-label="Move road up">↑</button><button class="icon mv" data-act="down" data-i="${i}" title="Move road down" aria-label="Move road down">↓</button></span>
+          <button class="icon" data-act="del-plot" data-i="${i}" title="Remove road" aria-label="Remove road">✕</button>
+        </div>`
+            : `
         <div class="row plots">
           <input data-list="p" data-row="${i}" data-key="id" value="${esc(p.id)}" />
           <input data-list="p" data-row="${i}" data-key="width" type="number" min="5" value="${esc(p.width)}" />
@@ -152,11 +162,18 @@ export function renderPlotsForm(root, d, h) {
         .join('')}
       </div>
       <div class="row-actions"><button class="ghost small" data-act="add-plot">+ Add plot</button><button class="ghost small danger" data-act="clear-plots">Clear all</button></div>
+      <div class="add-road">
+        <span>+ Road after plot</span>
+        <select id="rd-after">${onlyPlots.map((p) => `<option value="${esc(p.id)}">#${esc(p.id)}</option>`).join('')}</select>
+        <input id="rd-w" type="number" min="10" max="150" value="${esc(d.internalRoad || 30)}" title="Road width (ft)" /><span>ft</span>
+        <button class="ghost small" data-act="add-road">Add road</button>
+      </div>
+      <p class="tip">A road ends the current row of plots and starts the next plots on its far side. Use it to cut a road through the middle of the layout.</p>
       <details class="bulk">
         <summary>Bulk add plots</summary>
         <div class="grid2">
           <label class="field"><span>How many</span><input id="bk-count" type="number" min="1" max="200" value="10" /></label>
-          <label class="field"><span>Start number</span><input id="bk-start" type="number" min="1" value="${d.plots.length + 1}" /></label>
+          <label class="field"><span>Start number</span><input id="bk-start" type="number" min="1" value="${onlyPlots.length + 1}" /></label>
           <label class="field"><span>Width (ft)</span><input id="bk-w" type="number" min="5" value="30" /></label>
           <label class="field"><span>Depth (ft)</span><input id="bk-d" type="number" min="5" value="40" /></label>
           <label class="field"><span>Rate (₹ / sq ft)</span><input id="bk-rate" type="number" min="0" value="4500" /></label>
@@ -184,7 +201,7 @@ export function renderPlotsForm(root, d, h) {
     </fieldset>
     <div class="form-actions">
       <button class="primary wide" data-act="generate">Generate 3D ▸</button>
-      <p class="tip">Plots are laid out in the order listed, in back-to-back rows with a road on each side.</p>
+      <p class="tip">Plots are laid out in the order listed, in back-to-back rows with a road on each side. Road rows cut a road wherever you place them.</p>
     </div>`;
 
   const rerender = () => {
@@ -199,13 +216,22 @@ export function renderPlotsForm(root, d, h) {
     const act = b.dataset.act;
     const i = +b.dataset.i;
     if (act === 'add-plot') {
-      const last = d.plots[d.plots.length - 1] || { width: 30, depth: 40, facing: 'North', price: 5000000 };
-      const nextId = String((Math.max(0, ...d.plots.map((p) => parseInt(p.id, 10) || 0)) || 0) + 1);
+      const last = onlyPlots[onlyPlots.length - 1] || { width: 30, depth: 40, facing: 'North', price: 5000000 };
+      const nextId = String((Math.max(0, ...onlyPlots.map((p) => parseInt(p.id, 10) || 0)) || 0) + 1);
       d.plots.push({ ...last, id: nextId, status: 'available' });
     } else if (act === 'del-plot') d.plots.splice(i, 1);
     else if (act === 'clear-plots') {
       if (!confirmInline(b)) return;
       d.plots.length = 0;
+    } else if (act === 'add-road') {
+      const after = root.querySelector('#rd-after')?.value;
+      const w = num(root.querySelector('#rd-w').value) || num(d.internalRoad) || 30;
+      const at = d.plots.findIndex((p) => p.type !== 'road' && String(p.id) === String(after));
+      d.plots.splice(at < 0 ? d.plots.length : at + 1, 0, { type: 'road', width: w });
+    } else if (act === 'up' || act === 'down') {
+      const j = act === 'up' ? i - 1 : i + 1;
+      if (j < 0 || j >= d.plots.length) return;
+      [d.plots[i], d.plots[j]] = [d.plots[j], d.plots[i]];
     } else if (act === 'add-amen') d.amenities.push({ name: 'Park', type: 'park', width: 60, depth: 40 });
     else if (act === 'del-amen') d.amenities.splice(i, 1);
     else if (act === 'bulk') {

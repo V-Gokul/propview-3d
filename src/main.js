@@ -5,7 +5,7 @@ import { buildPlots, STATUS } from './scene/plots.js';
 import { renderApartmentForm, renderPlotsForm } from './ui/forms.js';
 import { openFlow } from './ui/flow.js';
 import { sampleApartment, samplePlots } from './samples.js';
-import { esc, inr, inrShort, num, roomArea, bhkLabel, validateApartment, validatePlots, store, download, slug } from './util.js';
+import { esc, inr, inrShort, num, roomArea, bhkLabel, validateApartment, validatePlots, store, download, slug, plotEntries } from './util.js';
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -166,12 +166,14 @@ function roomDetail(r) {
 
 function renderPlotPanels() {
   const d = state.plots;
-  const count = (s) => d.plots.filter((p) => (p.status || 'available') === s).length;
-  const avail = d.plots.filter((p) => (p.status || 'available') === 'available');
+  const entries = plotEntries(d.plots);
+  const only = entries.map(([p]) => p);
+  const count = (s) => only.filter((p) => (p.status || 'available') === s).length;
+  const avail = only.filter((p) => (p.status || 'available') === 'available');
   const prices = avail.map((p) => num(p.price)).filter(Boolean);
-  els.top.innerHTML = `<span class="chip">📍 ${esc(d.location || 'Location')}</span><span class="chip subtle">${esc(d.name)} · ${d.plots.length} plots</span>`;
+  els.top.innerHTML = `<span class="chip">📍 ${esc(d.location || 'Location')}</span><span class="chip subtle">${esc(d.name)} · ${only.length} plots</span>`;
 
-  const p = state.plot !== null ? d.plots[state.plot] : null;
+  const p = state.plot !== null && d.plots[state.plot]?.type !== 'road' ? d.plots[state.plot] : null;
   if (p) {
     const st = STATUS[p.status] || STATUS.available;
     const area = num(p.width) * num(p.depth);
@@ -194,7 +196,7 @@ function renderPlotPanels() {
         <div class="kicker">${esc(d.approval || 'Plot layout')}</div>
         <h3>${esc(d.name)}</h3>
         <div class="price">${prices.length ? `${inrShort(Math.min(...prices))} – ${inrShort(Math.max(...prices))}` : '—'}</div>
-        <div class="meta">${avail.length} of ${d.plots.length} plots available · ${esc(d.mainRoad)} ft main road</div>
+        <div class="meta">${avail.length} of ${only.length} plots available · ${esc(d.mainRoad)} ft main road</div>
         <div class="legend">${Object.entries(STATUS).map(([k, v]) => `<span><i style="background:${v.color}"></i>${v.label} (${count(k)})</span>`).join('')}</div>
         <p class="meta small">Click any plot or price tag to see details.</p>
       </div>`;
@@ -203,7 +205,7 @@ function renderPlotPanels() {
   els.bottom.innerHTML = `
     <div class="room-list plots">
       <h5>Plots</h5>
-      <div class="plot-chips">${d.plots.map((x, i) => `<button class="plot-chip${state.plot === i ? ' active' : ''}" data-plot="${i}" style="--c:${(STATUS[x.status] || STATUS.available).color}">${esc(x.id)}</button>`).join('')}</div>
+      <div class="plot-chips">${entries.map(([x, i]) => `<button class="plot-chip${state.plot === i ? ' active' : ''}" data-plot="${i}" style="--c:${(STATUS[x.status] || STATUS.available).color}">${esc(x.id)}</button>`).join('')}</div>
     </div>`;
 
   els.views.innerHTML = [['overview', '🧊 Overview'], ['top', '⬒ Top view']].map(([v, l]) => `<button data-view="${v}">${l}</button>`).join('');

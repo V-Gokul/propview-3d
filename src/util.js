@@ -47,10 +47,16 @@ export function validateApartment(a) {
 
 export function validatePlots(d) {
   const errs = [];
-  if (!d || !Array.isArray(d.plots) || d.plots.length === 0) return ['Add at least one plot.'];
-  if (d.plots.length > 500) errs.push('A layout can have at most 500 plots.');
+  const list = Array.isArray(d?.plots) ? d.plots : [];
+  const plots = list.filter((p) => p?.type !== 'road');
+  if (plots.length === 0) return ['Add at least one plot.'];
+  if (plots.length > 500) errs.push('A layout can have at most 500 plots.');
   const ids = new Set();
-  d.plots.forEach((p, i) => {
+  list.forEach((p, i) => {
+    if (p?.type === 'road') {
+      if (!(num(p.width) >= 10 && num(p.width) <= 150)) errs.push(`Road after row ${i}: width must be between 10 and 150 ft.`);
+      return;
+    }
     const label = `Plot ${p.id || i + 1}`;
     if (!(num(p.width) >= 5 && num(p.width) <= 2000)) errs.push(`${label}: width must be between 5 and 2000 ft.`);
     if (!(num(p.depth) >= 5 && num(p.depth) <= 2000)) errs.push(`${label}: depth must be between 5 and 2000 ft.`);
@@ -67,6 +73,9 @@ export function validatePlots(d) {
   });
   return errs;
 }
+
+/** Plot entries only (skips road markers), each with its index in the original list. */
+export const plotEntries = (list) => (list || []).map((p, i) => [p, i]).filter(([p]) => p?.type !== 'road');
 
 export const store = {
   get(k) {

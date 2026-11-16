@@ -84,7 +84,9 @@ npm run preview    # serve dist/ locally to check it
   "contact": "Site office",
   "plots": [
     { "id": "1", "width": 30, "depth": 40, "facing": "North", "price": 5040000, "status": "available" },
-    { "id": "2", "width": 40, "depth": 60, "facing": "South", "price": 10440000, "status": "sold" }
+    { "id": "2", "width": 40, "depth": 60, "facing": "South", "price": 10440000, "status": "sold" },
+    { "type": "road", "width": 30 },
+    { "id": "3", "width": 30, "depth": 40, "facing": "North", "price": 5220000, "status": "hold" }
   ],
   "amenities": [
     { "name": "Park", "type": "park", "width": 80, "depth": 60 },
@@ -96,6 +98,7 @@ npm run preview    # serve dist/ locally to check it
 - Plot `status`: `available`, `hold`, `booked`, `sold`.
 - Amenity `type`: `park`, `clubhouse`, `water`, `temple`, `playground`, `parking`, `other`.
 - Plots are laid out **in the order listed**, in back-to-back rows with a road on each side. A spine road on the west joins the rows, and the main road runs along the south edge with the entrance gate.
+- **Roads anywhere:** put `{ "type": "road", "width": 30 }` between plots in the `plots` list, or use **+ Road after plot #…** in the form. A road ends the current row of plots and starts the next plots on its far side, so you can cut a road through the middle of the layout. In the form, road rows show as grey bars you can widen, move up or down, or remove.
 - **Bulk add plots** in the form creates many identical plots at once, with prices computed from a rate per sq ft.
 
 ## Project structure
